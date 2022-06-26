@@ -88,7 +88,7 @@ int main(int argc, char* argv[]) {
 
 
     fd_set rfds;
-    struct timeval tv = {10, 0};
+    struct timeval tv = {5, 0};
     Packet* packet = packet_init(NTP_PACKET);
     char buffer[packet->size];
 
