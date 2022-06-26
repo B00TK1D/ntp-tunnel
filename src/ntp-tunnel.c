@@ -20,9 +20,6 @@
     #define KEY_SIZE 8
 #endif
 
-
-#define LOCALHOST 16777343
-
 enum Option
 {
     ListenOption = 1,
@@ -112,7 +109,7 @@ int main(int argc, char* argv[]) {
     int server_inet;
     if (argv[optind] == NULL) {
         if (opt & ListenOption) {
-            server_inet = LOCALHOST;
+            server_inet = 0;
         } else {
             #ifdef ERROR_ENABLED
                 fprintf(stderr, "Error: no address specified\n");
