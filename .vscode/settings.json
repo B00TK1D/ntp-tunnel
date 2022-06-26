@@ -26,6 +26,7 @@
         "stdlib.h": "c",
         "datatype.h": "c",
         "time.h": "c",
-        "socket.h": "c"
+        "socket.h": "c",
+        "unistd.h": "c"
     }
 }

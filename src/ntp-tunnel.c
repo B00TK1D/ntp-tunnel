@@ -21,6 +21,8 @@
 #endif
 
 
+#define LOCALHOST 16777343
+
 enum Option
 {
     ListenOption = 1,
@@ -34,14 +36,21 @@ enum Option
 int main(int argc, char* argv[]) {   
     enum Option opt = 0;
     int gopt = 0;
+    #define COMMAND_LENGTH 1024
+    char* command = malloc(sizeof(char) * COMMAND_LENGTH);
     #ifdef OBFUSCATE_ENABLED
-        while ((gopt = getopt(argc, argv, "losh")) != -1) {
+        while ((gopt = getopt(argc, argv, "e:loh")) != -1) {
     #else
-        while ((gopt = getopt(argc, argv, "lsh")) != -1) {
+        while ((gopt = getopt(argc, argv, "elh")) != -1) {
     #endif
         switch (gopt) {
-            case 'l': opt |= ListenOption; break;
-            case 's': opt |= ShellOption; break;
+            case 'e':
+                opt |= ShellOption;
+                strncpy(command, optarg, COMMAND_LENGTH);
+                break;
+            case 'l':
+                opt |= ListenOption;
+                break;
             case 'h':
                 #ifdef ERROR_ENABLED
                     printf("\nNTP Tunnel - A simple NTP data tunnel client/server\n\n");
@@ -51,7 +60,7 @@ int main(int argc, char* argv[]) {
                         printf("Usage: %s [-l] [-s] [-o] address\n", argv[0]);
                     #endif
                     printf("\t-l\tListen on the specified address (for use on the server side)\n");
-                    printf("\t-s\tSpawn a shell\n");
+                    printf("\t-e command\tExecute specified command in interactive mode\n");
                     #ifdef OBFUSCATE_ENABLED
                         printf("\t-o\tObfuscate the connection (basic encryption)\n");
                     #endif
@@ -71,7 +80,7 @@ int main(int argc, char* argv[]) {
                     #ifdef OBFUSTATE_ENABLED
                         printf("Usage: %s [-l] [-s] [-o] address\n", argv[0]);
                     #else
-                        printf("Usage: %s [-l] [-s] [-o] address\n", argv[0]);
+                        printf("Usage: %s [-l] [-o] [-e command] address\n", argv[0]);
                     #endif
                     exit(EXIT_FAILURE);
             #endif
@@ -100,7 +109,20 @@ int main(int argc, char* argv[]) {
 
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(123);
-    server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    int server_inet;
+    if (argv[optind] == NULL) {
+        if (opt & ListenOption) {
+            server_inet = LOCALHOST;
+        } else {
+            #ifdef ERROR_ENABLED
+                fprintf(stderr, "Error: no address specified\n");
+            #endif
+            return -1;
+        }
+    } else {
+        server_inet = inet_addr(argv[optind]);
+    }
+    server_addr.sin_addr.s_addr = server_inet;
 
     if (opt & ListenOption) {
         if(bind(sockfd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
@@ -135,111 +157,152 @@ int main(int argc, char* argv[]) {
         sendto(sockfd, packet_stream(packet), packet->size, 0, (struct sockaddr*)&server_addr, sock_struct_length);
     #endif
 
-    int out = STDIN_FILENO;
-    int in = STDOUT_FILENO;
+    
+    #define NUM_PIPES          2
+ 
+    #define PARENT_WRITE_PIPE  0
+    #define PARENT_READ_PIPE   1
+    
+    int pipes[NUM_PIPES][2];
+    
+    /* always in a pipe[], pipe[0] is for read and 
+    pipe[1] is for write */
+    #define READ_FD  0
+    #define WRITE_FD 1
+    
+    #define PARENT_READ_FD  ( pipes[PARENT_READ_PIPE][READ_FD]   )
+    #define PARENT_WRITE_FD ( pipes[PARENT_WRITE_PIPE][WRITE_FD] )
+    
+    #define CHILD_READ_FD   ( pipes[PARENT_WRITE_PIPE][READ_FD]  )
+    #define CHILD_WRITE_FD  ( pipes[PARENT_READ_PIPE][WRITE_FD]  )
 
+    pipe(pipes[PARENT_READ_PIPE]);
+    pipe(pipes[PARENT_WRITE_PIPE]);
 
+    if (opt & ShellOption && fork()) {
+        dup2(CHILD_READ_FD, STDIN_FILENO);
+        dup2(CHILD_WRITE_FD, STDOUT_FILENO);
+        dup2(CHILD_WRITE_FD, STDERR_FILENO);
 
+        close(CHILD_READ_FD);
+        close(CHILD_WRITE_FD);
+        close(PARENT_READ_FD);
+        close(PARENT_WRITE_FD);
 
-    FD_ZERO(&rfds);
-    FD_SET(in, &rfds);
-    FD_SET(sockfd, &rfds);
-    while (1) {
-        if(select(sockfd + 1, &rfds, NULL, NULL, &tv)) {
-            if (FD_ISSET(in, &rfds)) {
-                memset(packet->content, 0, packet->content_size);
-                read(in, packet->content, packet->content_size);
+        execve(command, NULL, NULL);
+    } else {
 
-                #ifdef OBFUSCATE_ENABLED
-                    if (opt & ObfuscateOption) {
-                        for (int i = 0; i < packet->content_size; i++) {
-                            packet->content[i] ^= key[i % KEY_SIZE] ^ i*i*i;
+        if (opt & ShellOption) {
+            close(CHILD_READ_FD);
+            close(CHILD_WRITE_FD);
+        } else {
+            PARENT_READ_FD = STDIN_FILENO;
+            PARENT_WRITE_FD = STDOUT_FILENO;
+        }
+
+        FD_ZERO(&rfds);
+        FD_SET(PARENT_READ_FD, &rfds);
+        FD_SET(sockfd, &rfds);
+        int max_fd = sockfd > PARENT_READ_FD ? sockfd : PARENT_READ_FD;
+
+        while (1) {
+            if(select(max_fd + 1, &rfds, NULL, NULL, &tv)) {
+                if (FD_ISSET(PARENT_READ_FD, &rfds)) {
+                    memset(packet->content, 0, packet->content_size);
+                    read(PARENT_READ_FD, packet->content, packet->content_size);
+
+                    #ifdef OBFUSCATE_ENABLED
+                        if (opt & ObfuscateOption) {
+                            for (int i = 0; i < packet->content_size; i++) {
+                                packet->content[i] ^= key[i % KEY_SIZE] ^ i*i*i;
+                            }
                         }
-                    }
-                #endif
-                if (opt & ListenOption) {
-                    sendto(sockfd, packet_stream(packet), packet->size, 0, (struct sockaddr*)&client_addr, sock_struct_length);
-                } else {
-                    sendto(sockfd, packet_stream(packet), packet->size, 0, (struct sockaddr*)&server_addr, sock_struct_length);
-                }
-                FD_SET(sockfd, &rfds);
-            } else {
-                memset(packet->content, 0, packet->content_size);
-                if (opt & ListenOption) {
-                    recvfrom(sockfd, buffer, packet->size, 0, (struct sockaddr*)&client_addr, &sock_struct_length);
-                } else {
-                    recvfrom(sockfd, buffer, packet->size, 0, (struct sockaddr*)&server_addr, &sock_struct_length);
-                }
-                packet_parse(packet, buffer);
-                if (opt & ObfuscateOption) {
-                    if (strncmp(packet->content, NTP_DEFAULT_CONTENT, packet->content_size - KEY_SIZE) == 0) {
-                        memcpy(key, &packet->content[packet->content_size - KEY_SIZE], KEY_SIZE);
+                    #endif
+                    if (opt & ListenOption) {
+                        sendto(sockfd, packet_stream(packet), packet->size, 0, (struct sockaddr*)&client_addr, sock_struct_length);
                     } else {
-                        for (int i = 0; i < packet->content_size; i++) {
-                            packet->content[i] ^= key[i % KEY_SIZE] ^ i*i*i;
-                        }
-                        write(out, packet->content, packet->content_size);
-                        fflush(stdout);
+                        sendto(sockfd, packet_stream(packet), packet->size, 0, (struct sockaddr*)&server_addr, sock_struct_length);
                     }
+                    FD_SET(sockfd, &rfds);
                 } else {
-                    if (strcmp(packet->content, NTP_DEFAULT_CONTENT)) {
-                        write(out, packet->content, packet->content_size);
-                        fflush(stdout);
+                    memset(packet->content, 0, packet->content_size);
+                    if (opt & ListenOption) {
+                        recvfrom(sockfd, buffer, packet->size, 0, (struct sockaddr*)&client_addr, &sock_struct_length);
+                    } else {
+                        recvfrom(sockfd, buffer, packet->size, 0, (struct sockaddr*)&server_addr, &sock_struct_length);
                     }
+                    packet_parse(packet, buffer);
+                    if (opt & ObfuscateOption) {
+                        if (strncmp(packet->content, NTP_DEFAULT_CONTENT, packet->content_size - KEY_SIZE) == 0) {
+                            memcpy(key, &packet->content[packet->content_size - KEY_SIZE], KEY_SIZE);
+                        } else {
+                            for (int i = 0; i < packet->content_size; i++) {
+                                packet->content[i] ^= key[i % KEY_SIZE] ^ i*i*i;
+                            }
+                            write(PARENT_WRITE_FD, packet->content, packet->content_size);
+                            fflush(stdout);
+                        }
+                    } else {
+                        if (strcmp(packet->content, NTP_DEFAULT_CONTENT)) {
+                            write(PARENT_WRITE_FD, packet->content, packet->content_size);
+                            fflush(stdout);
+                        }
+                    }
+                    FD_SET(PARENT_READ_FD, &rfds);
                 }
-                FD_SET(in, &rfds);
-            }
-        } else {            
-            close(sockfd);
-            sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+            } else {            
+                close(sockfd);
+                sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
-            if(sockfd < 0){
-                #ifdef ERROR_ENABLED
-                    fprintf(stderr, "Error: couldn't create socket\n");
-                #endif
-                return -1;
-            }
-
-            struct sockaddr_in fresh_server_addr, fresh_client_addr;
-
-            fresh_server_addr.sin_family = AF_INET;
-            fresh_server_addr.sin_port = htons(123);
-            fresh_server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-
-            server_addr = fresh_server_addr;
-            client_addr = fresh_client_addr;
-
-            if (opt & ListenOption) {
-                if(bind(sockfd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0){
+                if(sockfd < 0){
                     #ifdef ERROR_ENABLED
-                        fprintf(stderr, "Error: couldn't bind to port\n");
+                        fprintf(stderr, "Error: couldn't create socket\n");
                     #endif
                     return -1;
                 }
-            } else {
-                if (opt & ObfuscateOption) {
-                    srand(time(NULL) ^ getpid());
-                    for (int i = 0; i < KEY_SIZE; i++) {
-                        key[i] = (char)rand();
+
+                //struct sockaddr_in fresh_server_addr, fresh_client_addr;
+
+                //fresh_server_addr.sin_family = AF_INET;
+                //fresh_server_addr.sin_port = htons(123);
+                //fresh_server_addr.sin_addr.s_addr = server_inet;
+
+                //server_addr = fresh_server_addr;
+                //client_addr = fresh_client_addr;
+
+                if (opt & ListenOption) {
+                    if(bind(sockfd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0){
+                        #ifdef ERROR_ENABLED
+                            fprintf(stderr, "Error: couldn't bind to port\n");
+                        #endif
+                        return -1;
                     }
-                    packet->content = NTP_DEFAULT_CONTENT;
-                    memcpy(&packet->content[packet->content_size - KEY_SIZE], key, KEY_SIZE);
-                    sendto(sockfd, packet_stream(packet), packet->size, 0, (struct sockaddr*)&server_addr, sock_struct_length);
                 } else {
-                    packet->content = NTP_DEFAULT_CONTENT;
-                    sendto(sockfd, packet_stream(packet), packet->size, 0, (struct sockaddr*)&server_addr, sock_struct_length);
+                    if (opt & ObfuscateOption) {
+                        srand(time(NULL) ^ getpid());
+                        for (int i = 0; i < KEY_SIZE; i++) {
+                            key[i] = (char)rand();
+                        }
+                        packet->content = NTP_DEFAULT_CONTENT;
+                        memcpy(&packet->content[packet->content_size - KEY_SIZE], key, KEY_SIZE);
+                        sendto(sockfd, packet_stream(packet), packet->size, 0, (struct sockaddr*)&server_addr, sock_struct_length);
+                    } else {
+                        packet->content = NTP_DEFAULT_CONTENT;
+                        sendto(sockfd, packet_stream(packet), packet->size, 0, (struct sockaddr*)&server_addr, sock_struct_length);
+                    }
                 }
+                
+                FD_ZERO(&rfds);
+                FD_SET(PARENT_READ_FD, &rfds);
+                FD_SET(sockfd, &rfds);
             }
-            
-            FD_ZERO(&rfds);
-            FD_SET(STDIN_FILENO, &rfds);
-            FD_SET(sockfd, &rfds);
-        }
-    }   
+        }   
 
 
-    close(sockfd);
-    packet_destroy(packet);
+        close(sockfd);
+        packet_destroy(packet);
+    }
+    
     
     exit(EXIT_SUCCESS);
 }
