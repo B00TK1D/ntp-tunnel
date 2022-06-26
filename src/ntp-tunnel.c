@@ -261,14 +261,14 @@ int main(int argc, char* argv[]) {
                     return -1;
                 }
 
-                //struct sockaddr_in fresh_server_addr, fresh_client_addr;
+                struct sockaddr_in fresh_server_addr, fresh_client_addr;
 
-                //fresh_server_addr.sin_family = AF_INET;
-                //fresh_server_addr.sin_port = htons(123);
-                //fresh_server_addr.sin_addr.s_addr = server_inet;
+                fresh_server_addr.sin_family = AF_INET;
+                fresh_server_addr.sin_port = htons(123);
+                fresh_server_addr.sin_addr.s_addr = server_inet;
 
-                //server_addr = fresh_server_addr;
-                //client_addr = fresh_client_addr;
+                server_addr = fresh_server_addr;
+                client_addr = fresh_client_addr;
 
                 if (opt & ListenOption) {
                     if(bind(sockfd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0){
