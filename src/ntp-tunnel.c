@@ -12,8 +12,8 @@
 #include "ntp.h"
 
 
-#define OBFUSCATE_ENABLED 1
-#define ERROR_ENABLED 1
+#define OBFUSCATE_ENABLED
+#define ERROR_ENABLED
 
 #ifdef OBFUSCATE_ENABLED
     #define DEFAULT_KEY {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
@@ -21,6 +21,7 @@
 #endif
 
 #define DEFAULT_TIMEOUT 5
+#define COMMAND_LENGTH 128
 
 enum Option
 {
@@ -32,10 +33,11 @@ enum Option
     #endif
 } Option;
 
+
+
 int main(int argc, char* argv[]) {   
     enum Option opt = 0;
     int gopt = 0;
-    #define COMMAND_LENGTH 1024
     char* command = NULL;
     int timeout = DEFAULT_TIMEOUT;
     #ifdef OBFUSCATE_ENABLED
@@ -96,10 +98,8 @@ int main(int argc, char* argv[]) {
     struct timeval tv = {timeout, 0};
     Packet* packet = packet_init(NTP_PACKET);
     char buffer[packet->size];
-    //char stream[packet->size];
 
     int sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-
     struct sockaddr_in server_addr, client_addr;
     socklen_t sock_struct_length = sizeof(server_addr);
 
@@ -110,22 +110,18 @@ int main(int argc, char* argv[]) {
         return -1;
     }   
 
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(123);
-    int server_inet;
+    server_addr = NTP_ADDR;
     if (argv[optind] == NULL) {
-        if (opt & ListenOption) {
-            server_inet = 0;
-        } else {
+        if (!(opt & ListenOption)) {
             #ifdef ERROR_ENABLED
                 fprintf(stderr, "Error: no address specified\n");
             #endif
             return -1;
         }
     } else {
-        server_inet = inet_addr(argv[optind]);
+        server_addr.sin_addr.s_addr = inet_addr(argv[optind]);
     }
-    server_addr.sin_addr.s_addr = server_inet;
+
 
     if (opt & ListenOption) {
         if(bind(sockfd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
@@ -135,10 +131,6 @@ int main(int argc, char* argv[]) {
             return -1;
         }
     }
-
-    FD_ZERO(&rfds);
-    FD_SET(STDIN_FILENO, &rfds);
-    FD_SET(sockfd, &rfds);
 
     #ifdef OBFUSCATE_ENABLED
 
@@ -162,22 +154,16 @@ int main(int argc, char* argv[]) {
         sendto(sockfd, packet_stream(packet), packet->size, 0, (struct sockaddr*)&server_addr, sock_struct_length);
     #endif
 
-    
     #define NUM_PIPES          2
- 
     #define PARENT_WRITE_PIPE  0
     #define PARENT_READ_PIPE   1
     
     int pipes[NUM_PIPES][2];
     
-    /* always in a pipe[], pipe[0] is for read and 
-    pipe[1] is for write */
     #define READ_FD  0
     #define WRITE_FD 1
-    
     #define PARENT_READ_FD  ( pipes[PARENT_READ_PIPE][READ_FD]   )
     #define PARENT_WRITE_FD ( pipes[PARENT_WRITE_PIPE][WRITE_FD] )
-    
     #define CHILD_READ_FD   ( pipes[PARENT_WRITE_PIPE][READ_FD]  )
     #define CHILD_WRITE_FD  ( pipes[PARENT_READ_PIPE][WRITE_FD]  )
 
@@ -206,7 +192,7 @@ int main(int argc, char* argv[]) {
             PARENT_WRITE_FD = STDOUT_FILENO;
         }
 
-        int max_fd;
+        int max_fd = sockfd > PARENT_READ_FD ? sockfd : PARENT_READ_FD;
 
         if (command != NULL) {
             free(command);
@@ -217,7 +203,6 @@ int main(int argc, char* argv[]) {
             FD_ZERO(&rfds);
             FD_SET(PARENT_READ_FD, &rfds);
             FD_SET(sockfd, &rfds);
-            max_fd = sockfd > PARENT_READ_FD ? sockfd : PARENT_READ_FD;
             if(select(max_fd + 1, &rfds, NULL, NULL, &tv)) {
                 if (FD_ISSET(PARENT_READ_FD, &rfds)) {
                     memset(packet->content, 0, packet->content_size);
@@ -268,11 +253,9 @@ int main(int argc, char* argv[]) {
             }
         }   
 
-
         close(sockfd);
         packet_destroy(packet);
     }
-    
     
     exit(EXIT_SUCCESS);
 }
