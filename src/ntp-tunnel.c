@@ -204,7 +204,6 @@ int main(int argc, char* argv[]) {
             FD_SET(PARENT_READ_FD, &rfds);
             FD_SET(sockfd, &rfds);
             max_fd = sockfd > PARENT_READ_FD ? sockfd : PARENT_READ_FD;
-            tv = (struct timeval) {5, 0};
             if(select(max_fd + 1, &rfds, NULL, NULL, &tv)) {
                 if (FD_ISSET(PARENT_READ_FD, &rfds)) {
                     memset(packet->content, 0, packet->content_size);
@@ -249,7 +248,7 @@ int main(int argc, char* argv[]) {
                     }
                     FD_SET(PARENT_READ_FD, &rfds);
                 }
-            }/* else {            
+            } else {            
                 close(sockfd);
                 sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
@@ -290,7 +289,8 @@ int main(int argc, char* argv[]) {
                         sendto(sockfd, packet_stream(packet), packet->size, 0, (struct sockaddr*)&server_addr, sock_struct_length);
                     }
                 }
-            }*/
+                tv = (struct timeval) {5, 0};
+            }
         }   
 
 
