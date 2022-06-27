@@ -20,6 +20,8 @@
     #define KEY_SIZE 8
 #endif
 
+#define DEFAULT_TIMEOUT 5
+
 enum Option
 {
     ListenOption = 1,
@@ -35,15 +37,19 @@ int main(int argc, char* argv[]) {
     int gopt = 0;
     #define COMMAND_LENGTH 1024
     char* command = malloc(sizeof(char) * COMMAND_LENGTH);
+    int timeout = DEFAULT_TIMEOUT;
     #ifdef OBFUSCATE_ENABLED
-        while ((gopt = getopt(argc, argv, "e:loh")) != -1) {
+        while ((gopt = getopt(argc, argv, "e:loht")) != -1) {
     #else
-        while ((gopt = getopt(argc, argv, "elh")) != -1) {
+        while ((gopt = getopt(argc, argv, "elht")) != -1) {
     #endif
         switch (gopt) {
             case 'e':
                 opt |= ShellOption;
                 strncpy(command, optarg, COMMAND_LENGTH);
+                break;
+            case 't':
+                timeout = atoi(optarg);
                 break;
             case 'l':
                 opt |= ListenOption;
@@ -51,13 +57,14 @@ int main(int argc, char* argv[]) {
             case 'h':
                 #ifdef ERROR_ENABLED
                     printf("\nNTP Tunnel - A simple NTP data tunnel client/server\n\n");
-                    #ifdef OBFUSTATE_ENABLED
-                        printf("Usage: %s [-l] [-s] [-o] address\n", argv[0]);
+                    #ifdef OBFUSCATE_ENABLED
+                        printf("Usage: %s [-l] [-o] [-t timeout] [-e command] address\n", argv[0]);
                     #else
-                        printf("Usage: %s [-l] [-s] [-o] address\n", argv[0]);
+                        printf("Usage: %s [-l] [-o] [-t timeout] address\n", argv[0]);
                     #endif
                     printf("\t-l\tListen on the specified address (for use on the server side)\n");
                     printf("\t-e command\tExecute specified command in interactive mode\n");
+                    printf("\t-t timeout\tSet the socket refresh timeout in seconds (default 5)\n");
                     #ifdef OBFUSCATE_ENABLED
                         printf("\t-o\tObfuscate the connection (basic encryption)\n");
                     #endif
@@ -88,7 +95,7 @@ int main(int argc, char* argv[]) {
 
 
     fd_set rfds;
-    struct timeval tv = {5, 0};
+    struct timeval tv = {timeout, 0};
     Packet* packet = packet_init(NTP_PACKET);
     char buffer[packet->size];
 
@@ -289,7 +296,7 @@ int main(int argc, char* argv[]) {
                         sendto(sockfd, packet_stream(packet), packet->size, 0, (struct sockaddr*)&server_addr, sock_struct_length);
                     }
                 }
-                tv = (struct timeval) {5, 0};
+                tv = (struct timeval) {timeout, 0};
             }
         }   
 
