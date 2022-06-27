@@ -22,8 +22,7 @@ void packet_destroy(Packet* packet) {
     free(packet);
 }
 
-char* packet_stream(Packet* packet) {
-    char* stream = (char*) malloc(packet->size);
+char* packet_stream(Packet* packet, char* stream) {
     memcpy(stream, packet->header, packet->header_size);
     memcpy(stream + packet->header_size, packet->content, packet->content_size);
     memcpy(stream + packet->header_size + packet->content_size, packet->footer, packet->footer_size);

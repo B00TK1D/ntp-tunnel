@@ -98,6 +98,7 @@ int main(int argc, char* argv[]) {
     struct timeval tv = {timeout, 0};
     Packet* packet = packet_init(NTP_PACKET);
     char buffer[packet->size];
+    char stream[packet->size];
 
     int sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
@@ -151,10 +152,12 @@ int main(int argc, char* argv[]) {
             }
             packet->content = NTP_DEFAULT_CONTENT;
             memcpy(&packet->content[packet->content_size - KEY_SIZE], key, KEY_SIZE);
-            sendto(sockfd, packet_stream(packet), packet->size, 0, (struct sockaddr*)&server_addr, sock_struct_length);
+            packet_stream(packet, stream);
+            sendto(sockfd, stream, packet->size, 0, (struct sockaddr*)&server_addr, sock_struct_length);
         } else {
             packet->content = NTP_DEFAULT_CONTENT;
-            sendto(sockfd, packet_stream(packet), packet->size, 0, (struct sockaddr*)&server_addr, sock_struct_length);
+            packet_stream(packet, stream);
+            sendto(sockfd, stream, packet->size, 0, (struct sockaddr*)&server_addr, sock_struct_length);
         }
     #else
         packet->content = NTP_DEFAULT_CONTENT;
@@ -223,10 +226,11 @@ int main(int argc, char* argv[]) {
                             }
                         }
                     #endif
+                    packet_stream(packet, stream);
                     if (opt & ListenOption) {
-                        sendto(sockfd, packet_stream(packet), packet->size, 0, (struct sockaddr*)&client_addr, sock_struct_length);
+                        sendto(sockfd, stream, packet->size, 0, (struct sockaddr*)&client_addr, sock_struct_length);
                     } else {
-                        sendto(sockfd, packet_stream(packet), packet->size, 0, (struct sockaddr*)&server_addr, sock_struct_length);
+                        sendto(sockfd, stream, packet->size, 0, (struct sockaddr*)&server_addr, sock_struct_length);
                     }
                     FD_SET(sockfd, &rfds);
                 } else {
@@ -256,7 +260,7 @@ int main(int argc, char* argv[]) {
                     FD_SET(PARENT_READ_FD, &rfds);
                 }
             } else {            
-                close(sockfd);
+                /*close(sockfd);
                 sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
                 if(sockfd < 0){
@@ -295,7 +299,7 @@ int main(int argc, char* argv[]) {
                         packet->content = NTP_DEFAULT_CONTENT;
                         sendto(sockfd, packet_stream(packet), packet->size, 0, (struct sockaddr*)&server_addr, sock_struct_length);
                     }
-                }
+                }*/
                 tv = (struct timeval) {timeout, 0};
             }
         }   

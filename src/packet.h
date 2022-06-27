@@ -15,6 +15,6 @@ Packet* packet_init(int content_size, int header_size, char header[], int footer
 
 void packet_destroy(Packet* packet);
 
-char* packet_stream(Packet* packet);
+char* packet_stream(Packet* packet, char* stream);
 
 void packet_parse(Packet* packet, char* stream);
