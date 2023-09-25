@@ -1,3 +1,3 @@
-# ntp-tunnel
+# NTP Tunnel
 
 Like netcat, but over NTP
